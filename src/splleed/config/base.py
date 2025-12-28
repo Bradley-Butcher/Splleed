@@ -40,6 +40,17 @@ class BenchmarkConfig(BaseModel):
     concurrency: list[int] = Field(default=[1, 2, 4, 8], description="Concurrency levels to test")
     warmup: int = Field(default=2, description="Number of warmup runs")
     runs: int = Field(default=3, description="Number of benchmark runs per concurrency level")
+    trials: int = Field(
+        default=1,
+        ge=1,
+        description="Number of independent benchmark trials for confidence intervals",
+    )
+    confidence_level: float = Field(
+        default=0.95,
+        ge=0.5,
+        le=0.99,
+        description="Confidence level for CI computation (0.95 = 95% CI)",
+    )
 
     # For serve mode
     arrival: ArrivalPattern | None = None
@@ -49,14 +60,17 @@ class BenchmarkConfig(BaseModel):
 class DatasetConfig(BaseModel):
     """Dataset configuration for benchmark prompts."""
 
-    type: Literal["sharegpt", "random", "jsonl", "inline"] = "inline"
+    type: Literal["random", "jsonl", "inline"] = "inline"
     path: Path | None = Field(default=None, description="Path to dataset file")
     prompts: list[str] | None = Field(default=None, description="Inline prompts")
     num_samples: int = Field(default=1000, description="Number of samples to use")
     input_len_range: tuple[int, int] | None = Field(
-        default=None, description="Filter prompts by token length (min, max)"
+        default=None, description="Filter prompts by character length (min, max)"
     )
     output_len: int = Field(default=128, description="Expected output length for random dataset")
+    analyze_before_run: bool = Field(
+        default=False, description="Print dataset distribution analysis before benchmarking"
+    )
 
 
 class OutputConfig(BaseModel):
@@ -78,6 +92,18 @@ class CloudConfig(BaseModel):
     disk_size: int = Field(default=100, description="Disk size in GB")
 
 
+class TokenizerConfig(BaseModel):
+    """Configuration for tokenizer used in token counting."""
+
+    enabled: bool = Field(default=False, description="Enable local token counting")
+    model: str | None = Field(
+        default=None, description="Tokenizer model name (defaults to backend model)"
+    )
+    trust_remote_code: bool = Field(
+        default=False, description="Trust remote code when loading tokenizer from HuggingFace"
+    )
+
+
 class SplleedConfig(BaseModel):
     """Root configuration for splleed benchmarks."""
 
@@ -87,3 +113,4 @@ class SplleedConfig(BaseModel):
     sampling: SamplingConfig = Field(default_factory=SamplingConfig)
     output: OutputConfig = Field(default_factory=OutputConfig)
     cloud: CloudConfig | None = None
+    tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)

@@ -1,14 +1,23 @@
 """Metrics collection and aggregation."""
 
 from .aggregator import LatencyStats, aggregate_results, compute_goodput
-from .types import BenchmarkResults, ConcurrencyResult, RequestResult, Token
+from .types import (
+    BenchmarkResults,
+    ConcurrencyResult,
+    ConcurrencyResultWithCI,
+    RequestResult,
+    Token,
+    TrialResult,
+)
 
 __all__ = [
     "aggregate_results",
     "BenchmarkResults",
     "compute_goodput",
     "ConcurrencyResult",
+    "ConcurrencyResultWithCI",
     "LatencyStats",
     "RequestResult",
     "Token",
+    "TrialResult",
 ]

@@ -13,7 +13,10 @@ if TYPE_CHECKING:
 
 def _serialize_value(obj: Any) -> Any:
     """Serialize values for JSON output."""
-    if hasattr(obj, "__dataclass_fields__"):
+    # Check for custom to_dict() method first (e.g., EnvironmentInfo)
+    if hasattr(obj, "to_dict") and callable(obj.to_dict):
+        return obj.to_dict()
+    elif hasattr(obj, "__dataclass_fields__"):
         return {k: _serialize_value(v) for k, v in asdict(obj).items()}
     elif isinstance(obj, list):
         return [_serialize_value(v) for v in obj]

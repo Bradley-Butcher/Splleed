@@ -1,7 +1,13 @@
 """Core metric types for benchmark results."""
 
+from __future__ import annotations
+
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from splleed.environment import EnvironmentInfo
+    from splleed.stats import ConfidenceInterval
 
 
 @dataclass
@@ -98,6 +104,54 @@ class ConcurrencyResult:
 
 
 @dataclass
+class TrialResult:
+    """Results from a single benchmark trial (for multi-trial runs)."""
+
+    trial_index: int
+    concurrency_results: list[ConcurrencyResult]
+
+
+@dataclass
+class ConcurrencyResultWithCI:
+    """
+    Aggregated results with confidence intervals (when trials > 1).
+
+    All latency/throughput values are ConfidenceInterval objects containing
+    mean, ci_lower, ci_upper, and std.
+    """
+
+    concurrency: int
+    num_requests: int  # Total across all trials
+    num_successful: int
+    num_failed: int
+
+    # Throughput metrics with CI
+    throughput_tokens_per_sec: ConfidenceInterval
+    throughput_requests_per_sec: ConfidenceInterval
+
+    # Latency metrics with CI (in milliseconds)
+    ttft_p50_ms: ConfidenceInterval
+    ttft_p95_ms: ConfidenceInterval
+    ttft_p99_ms: ConfidenceInterval
+    ttft_mean_ms: ConfidenceInterval
+
+    itl_p50_ms: ConfidenceInterval
+    itl_p95_ms: ConfidenceInterval
+    itl_p99_ms: ConfidenceInterval
+    itl_mean_ms: ConfidenceInterval
+
+    tpot_mean_ms: ConfidenceInterval
+
+    e2el_p50_ms: ConfidenceInterval
+    e2el_p95_ms: ConfidenceInterval
+    e2el_p99_ms: ConfidenceInterval
+    e2el_mean_ms: ConfidenceInterval
+
+    # Goodput with CI (if SLO configured)
+    goodput_pct: ConfidenceInterval | None = None
+
+
+@dataclass
 class BenchmarkResults:
     """Complete benchmark results."""
 
@@ -105,8 +159,16 @@ class BenchmarkResults:
     engine: str
     model: str
     timestamp: str
-    gpu: str | None
+    gpu: str | None  # Keep for backwards compatibility
     config: dict[str, Any]
 
-    # Results per concurrency level
+    # Results per concurrency level (first trial or single trial)
     results: list[ConcurrencyResult]
+
+    # Extended fields for Phase 1
+    environment: EnvironmentInfo | None = None
+    n_trials: int = 1
+
+    # Multi-trial data (populated when trials > 1)
+    trial_results: list[TrialResult] | None = None
+    aggregated_results: list[ConcurrencyResultWithCI] | None = None
