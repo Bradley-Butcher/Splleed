@@ -5,15 +5,17 @@ description = "LLM inference benchmarking harness with pluggable backends"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "splleed contributors" }]
-keywords = ["llm", "benchmark", "inference", "vllm", "performance"]
+authors = [{ name = "Bradley Butcher", email = "bradleybutcher@outlook.com" }]
+keywords = ["llm", "benchmark", "inference", "vllm", "tgi", "performance", "latency"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
 dependencies = [
@@ -25,16 +27,10 @@ dependencies = [
     "numpy>=1.24",
 ]
 
-[project.optional-dependencies]
-vllm = ["vllm"]
-tgi = ["text-generation"]
-transformers = ["transformers", "torch"]
-cloud = ["skypilot"]
-dev = [
-    "pytest>=7.0",
-    "pytest-asyncio>=0.21",
-    "ruff>=0.1",
-]
+[project.urls]
+Homepage = "https://github.com/Bradley-Butcher/Splleed"
+Repository = "https://github.com/Bradley-Butcher/Splleed"
+Issues = "https://github.com/Bradley-Butcher/Splleed/issues"
 
 [project.scripts]
 splleed = "splleed.cli:app"
@@ -61,6 +57,8 @@ testpaths = ["tests"]
 dev = [
     "pre-commit>=4.5.1",
     "pyright>=1.1.407",
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
     "pytest-cov>=7.0.0",
     "ruff>=0.14.10",
     "vulture>=2.14",
