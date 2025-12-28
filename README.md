@@ -111,6 +111,37 @@ backend = TGIConfig(
 )
 ```
 
+## Benchmark Modes
+
+### Latency Mode (default)
+Sequential requests to measure per-request latency without interference:
+```python
+Benchmark(..., mode="latency")
+```
+
+### Throughput Mode
+Concurrent requests to measure maximum throughput:
+```python
+Benchmark(..., mode="throughput", concurrency=[1, 4, 8, 16])
+```
+
+### Serve Mode
+Simulate realistic traffic with controlled arrival patterns:
+```python
+Benchmark(
+    ...,
+    mode="serve",
+    arrival_rate=10.0,           # 10 requests/sec
+    arrival_pattern="poisson",   # realistic traffic
+    concurrency=[32],            # max concurrent requests
+)
+```
+
+Arrival patterns:
+- `poisson` - exponential inter-arrival times (realistic web traffic)
+- `gamma` - configurable burstiness
+- `constant` - fixed interval between requests
+
 ## Benchmark Options
 
 ```python
@@ -125,6 +156,10 @@ Benchmark(
     runs=10,                 # requests per concurrency level
     trials=3,                # independent trials for CI
     confidence_level=0.95,   # confidence interval level
+
+    # Serve mode only
+    arrival_rate=10.0,       # requests per second
+    arrival_pattern="poisson",  # "poisson", "gamma", "constant"
 
     # Sampling parameters
     sampling=SamplingParams(
