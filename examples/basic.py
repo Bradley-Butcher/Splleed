@@ -3,11 +3,10 @@
 import asyncio
 
 from splleed import Benchmark, SamplingParams, VLLMConfig
-from splleed.reporters import print_results
 
 
 async def main():
-    b = Benchmark(
+    results = await Benchmark(
         backend=VLLMConfig(model="Qwen/Qwen2.5-0.5B-Instruct"),
         prompts=[
             "What is the capital of France?",
@@ -15,14 +14,12 @@ async def main():
             "Write a haiku about programming.",
         ],
         concurrency=[1, 2, 4],
-        mode="latency",
         warmup=2,
-        runs=10,
-        sampling=SamplingParams(max_tokens=100, temperature=0.0),
-    )
+        trials=3,
+        sampling=SamplingParams(max_tokens=100),
+    ).run()
 
-    results = await b.run()
-    print_results(results)
+    results.print()
 
 
 if __name__ == "__main__":
