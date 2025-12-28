@@ -20,20 +20,18 @@ classifiers = [
 
 dependencies = [
     "pydantic>=2.0",
-    "typer>=0.9",
     "httpx>=0.25",
     "rich>=13.0",
-    "pyyaml>=6.0",
     "numpy>=1.24,<2.3",  # numba (vLLM dep) requires <2.3
 ]
+
+[project.optional-dependencies]
+hf = ["datasets>=2.0"]
 
 [project.urls]
 Homepage = "https://github.com/Bradley-Butcher/Splleed"
 Repository = "https://github.com/Bradley-Butcher/Splleed"
 Issues = "https://github.com/Bradley-Butcher/Splleed/issues"
-
-[project.scripts]
-splleed = "splleed.cli:app"
 
 [build-system]
 requires = ["hatchling"]

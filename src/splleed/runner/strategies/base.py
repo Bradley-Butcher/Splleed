@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from splleed.backends.base import Backend
     from splleed.config.base import BenchmarkConfig
-    from splleed.datasets.base import Dataset
     from splleed.metrics.types import RequestResult
     from splleed.runner.executor import RequestExecutor
 
@@ -27,7 +26,7 @@ class BenchmarkStrategy(ABC):
         self,
         executor: "RequestExecutor",
         backend: "Backend",
-        dataset: "Dataset",
+        prompts: list[str],
         config: "BenchmarkConfig",
     ) -> list["RequestResult"]:
         """
@@ -36,7 +35,7 @@ class BenchmarkStrategy(ABC):
         Args:
             executor: Request executor for timing individual requests
             backend: Inference backend to benchmark
-            dataset: Dataset of prompts to use
+            prompts: List of prompt strings to benchmark
             config: Benchmark configuration
 
         Returns:

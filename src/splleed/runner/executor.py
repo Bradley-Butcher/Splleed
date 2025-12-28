@@ -73,43 +73,30 @@ class RequestExecutor:
         )
 
 
-class BatchExecutor:
+async def execute_concurrent(
+    executor: RequestExecutor,
+    backend: Backend,
+    requests: list[GenerateRequest],
+    concurrency: int,
+) -> list[RequestResult]:
     """
-    Executes multiple requests with concurrency control.
+    Execute requests concurrently with semaphore limiting.
 
-    Used by benchmark strategies to run requests in parallel.
+    Args:
+        executor: Request executor for timing
+        backend: The inference backend to use
+        requests: List of generation requests
+        concurrency: Maximum concurrent requests
+
+    Returns:
+        List of results (same order as requests)
     """
+    import asyncio
 
-    def __init__(self, executor: RequestExecutor) -> None:
-        self.executor = executor
+    semaphore = asyncio.Semaphore(concurrency)
 
-    async def execute_batch(
-        self,
-        backend: Backend,
-        requests: list[GenerateRequest],
-        concurrency: int,
-    ) -> list[RequestResult]:
-        """
-        Execute multiple requests with limited concurrency.
+    async def run(req: GenerateRequest) -> RequestResult:
+        async with semaphore:
+            return await executor.execute(backend, req)
 
-        Args:
-            backend: The inference backend to use
-            requests: List of generation requests
-            concurrency: Maximum concurrent requests
-
-        Returns:
-            List of results in same order as requests
-        """
-        import asyncio
-
-        semaphore = asyncio.Semaphore(concurrency)
-        results: list[RequestResult | None] = [None] * len(requests)
-
-        async def run_with_semaphore(idx: int, req: GenerateRequest) -> None:
-            async with semaphore:
-                results[idx] = await self.executor.execute(backend, req)
-
-        tasks = [run_with_semaphore(i, req) for i, req in enumerate(requests)]
-        await asyncio.gather(*tasks)
-
-        return [r for r in results if r is not None]
+    return list(await asyncio.gather(*[run(r) for r in requests]))

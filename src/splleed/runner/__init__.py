@@ -1,11 +1,10 @@
 """Benchmark runner and strategies."""
 
-from .executor import BatchExecutor, RequestExecutor
-from .orchestrator import BenchmarkOrchestrator, run_benchmark
+from .executor import RequestExecutor, execute_concurrent
+from .orchestrator import BenchmarkOrchestrator
 
 __all__ = [
-    "BatchExecutor",
     "BenchmarkOrchestrator",
     "RequestExecutor",
-    "run_benchmark",
+    "execute_concurrent",
 ]

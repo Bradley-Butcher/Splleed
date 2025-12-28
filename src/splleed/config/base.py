@@ -1,12 +1,13 @@
-"""Base configuration classes for splleed."""
+"""Configuration classes for splleed."""
 
-from pathlib import Path
+from __future__ import annotations
+
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
-class SamplingConfig(BaseModel):
+class SamplingParams(BaseModel):
     """Per-request generation parameters."""
 
     max_tokens: int = 128
@@ -55,62 +56,3 @@ class BenchmarkConfig(BaseModel):
     # For serve mode
     arrival: ArrivalPattern | None = None
     slo: SLOConfig | None = None
-
-
-class DatasetConfig(BaseModel):
-    """Dataset configuration for benchmark prompts."""
-
-    type: Literal["random", "jsonl", "inline"] = "inline"
-    path: Path | None = Field(default=None, description="Path to dataset file")
-    prompts: list[str] | None = Field(default=None, description="Inline prompts")
-    num_samples: int = Field(default=1000, description="Number of samples to use")
-    input_len_range: tuple[int, int] | None = Field(
-        default=None, description="Filter prompts by character length (min, max)"
-    )
-    output_len: int = Field(default=128, description="Expected output length for random dataset")
-    analyze_before_run: bool = Field(
-        default=False, description="Print dataset distribution analysis before benchmarking"
-    )
-
-
-class OutputConfig(BaseModel):
-    """Output configuration for benchmark results."""
-
-    path: Path = Field(default=Path("results.json"), description="Output file path")
-    format: Literal["json", "csv", "markdown"] = "json"
-    include_raw: bool = Field(default=False, description="Include per-request raw data")
-
-
-class CloudConfig(BaseModel):
-    """SkyPilot cloud configuration."""
-
-    enabled: bool = False
-    gpu: str = Field(default="A100:1", description="GPU type and count")
-    provider: str | None = Field(default=None, description="Cloud provider (aws, gcp, lambda, any)")
-    spot: bool = Field(default=True, description="Use spot instances")
-    region: str | None = None
-    disk_size: int = Field(default=100, description="Disk size in GB")
-
-
-class TokenizerConfig(BaseModel):
-    """Configuration for tokenizer used in token counting."""
-
-    enabled: bool = Field(default=False, description="Enable local token counting")
-    model: str | None = Field(
-        default=None, description="Tokenizer model name (defaults to backend model)"
-    )
-    trust_remote_code: bool = Field(
-        default=False, description="Trust remote code when loading tokenizer from HuggingFace"
-    )
-
-
-class SplleedConfig(BaseModel):
-    """Root configuration for splleed benchmarks."""
-
-    # backend: BackendConfig  # Added after backends are defined to avoid circular import
-    dataset: DatasetConfig = Field(default_factory=DatasetConfig)
-    benchmark: BenchmarkConfig = Field(default_factory=BenchmarkConfig)
-    sampling: SamplingConfig = Field(default_factory=SamplingConfig)
-    output: OutputConfig = Field(default_factory=OutputConfig)
-    cloud: CloudConfig | None = None
-    tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)

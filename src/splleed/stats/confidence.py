@@ -215,28 +215,3 @@ def compute_ci(
         n_samples=n,
         confidence_level=confidence_level,
     )
-
-
-def aggregate_trial_values(
-    trial_values: Sequence[Sequence[float]],
-    confidence_level: float = 0.95,
-) -> ConfidenceInterval:
-    """
-    Aggregate values across multiple trials.
-
-    For each trial, computes the mean, then computes CI across trial means.
-
-    Args:
-        trial_values: List of value lists, one per trial
-        confidence_level: Confidence level for CI
-
-    Returns:
-        ConfidenceInterval across trials
-    """
-    if not trial_values:
-        return compute_ci([], confidence_level)
-
-    # Compute mean for each trial
-    trial_means = [float(np.mean(values)) for values in trial_values if len(values) > 0]
-
-    return compute_ci(trial_means, confidence_level)

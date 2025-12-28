@@ -2,7 +2,7 @@
 
 import numpy as np
 
-from splleed.stats import ConfidenceInterval, aggregate_trial_values, compute_ci
+from splleed.stats import ConfidenceInterval, compute_ci
 
 
 class TestConfidenceInterval:
@@ -125,31 +125,3 @@ class TestComputeCI:
         # Note: This isn't guaranteed for any single random draw,
         # but with seed 42 it should hold
         assert large_width < small_width
-
-
-class TestAggregateTrialValues:
-    """Tests for aggregate_trial_values function."""
-
-    def test_empty_trials(self):
-        """Test with no trials."""
-        ci = aggregate_trial_values([])
-        assert ci.n_samples == 0
-
-    def test_single_trial(self):
-        """Test with single trial."""
-        ci = aggregate_trial_values([[10, 20, 30]])
-        assert ci.mean == 20.0  # Mean of [10, 20, 30]
-        assert ci.n_samples == 1
-
-    def test_multiple_trials(self):
-        """Test with multiple trials."""
-        # Each trial has a different mean
-        trial1 = [10, 20, 30]  # mean = 20
-        trial2 = [20, 30, 40]  # mean = 30
-        trial3 = [30, 40, 50]  # mean = 40
-
-        ci = aggregate_trial_values([trial1, trial2, trial3])
-
-        # Mean of means: (20 + 30 + 40) / 3 = 30
-        assert ci.mean == 30.0
-        assert ci.n_samples == 3

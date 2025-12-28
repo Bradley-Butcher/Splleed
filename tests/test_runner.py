@@ -4,23 +4,18 @@ from __future__ import annotations
 
 import asyncio
 from collections.abc import AsyncGenerator
-from typing import TYPE_CHECKING
 
 import pytest
 
 from splleed.backends.base import Backend, BackendConfigBase, GenerateRequest
-from splleed.config.base import ArrivalPattern, BenchmarkConfig, SamplingConfig
-from splleed.datasets import InlineDataset
-from splleed.runner.executor import BatchExecutor, RequestExecutor
+from splleed.config.base import ArrivalPattern, BenchmarkConfig, SamplingParams
+from splleed.runner.executor import RequestExecutor, execute_concurrent
 from splleed.runner.strategies import (
     LatencyStrategy,
     ServeStrategy,
     ThroughputStrategy,
     generate_arrival_times,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class MockConfig(BackendConfigBase):
@@ -115,19 +110,19 @@ class TestRequestExecutor:
         assert 0.1 < result.total_time < 0.25
 
 
-class TestBatchExecutor:
-    """Tests for BatchExecutor."""
+class TestExecuteConcurrent:
+    """Tests for execute_concurrent function."""
 
     @pytest.mark.asyncio
-    async def test_batch_execute(self):
-        """Test batch execution with concurrency."""
+    async def test_execute_concurrent(self):
+        """Test concurrent execution."""
         backend = MockBackend(delay_per_token=0.01)
         executor = RequestExecutor()
-        batch_executor = BatchExecutor(executor)
 
         requests = [GenerateRequest(prompt=f"test {i}", max_tokens=10) for i in range(5)]
 
-        results = await batch_executor.execute_batch(
+        results = await execute_concurrent(
+            executor=executor,
             backend=backend,
             requests=requests,
             concurrency=2,
@@ -138,7 +133,7 @@ class TestBatchExecutor:
         assert backend.request_count == 5
 
     @pytest.mark.asyncio
-    async def test_batch_concurrency_limit(self):
+    async def test_concurrency_limit(self):
         """Test that concurrency is actually limited."""
         concurrent_count = 0
         max_concurrent = 0
@@ -156,11 +151,11 @@ class TestBatchExecutor:
 
         backend = TrackingBackend(delay_per_token=0.02)
         executor = RequestExecutor()
-        batch_executor = BatchExecutor(executor)
 
         requests = [GenerateRequest(prompt=f"test {i}", max_tokens=10) for i in range(10)]
 
-        await batch_executor.execute_batch(
+        await execute_concurrent(
+            executor=executor,
             backend=backend,
             requests=requests,
             concurrency=3,
@@ -241,12 +236,12 @@ class TestThroughputStrategy:
         """Test basic throughput strategy run."""
         backend = MockBackend(delay_per_token=0.01)
         executor = RequestExecutor()
-        dataset = InlineDataset(["prompt 1", "prompt 2", "prompt 3"])
+        prompts = ["prompt 1", "prompt 2", "prompt 3"]
         config = BenchmarkConfig(mode="throughput", runs=3, concurrency=[2])
-        sampling = SamplingConfig(max_tokens=50)
+        sampling = SamplingParams(max_tokens=50)
 
         strategy = ThroughputStrategy(sampling=sampling)
-        results = await strategy.run(executor, backend, dataset, config)
+        results = await strategy.run(executor, backend, prompts, config)
 
         assert len(results) > 0
         assert all(r.success for r in results)
@@ -270,11 +265,11 @@ class TestThroughputStrategy:
 
         backend = TrackingBackend(delay_per_token=0.02)
         executor = RequestExecutor()
-        dataset = InlineDataset(["p1", "p2", "p3", "p4", "p5"])
+        prompts = ["p1", "p2", "p3", "p4", "p5"]
         config = BenchmarkConfig(mode="throughput", runs=5, concurrency=[1, 2, 4])
 
         strategy = ThroughputStrategy()
-        await strategy.run(executor, backend, dataset, config)
+        await strategy.run(executor, backend, prompts, config)
 
         # Should use max concurrency (4)
         assert max_concurrent <= 4
@@ -298,11 +293,11 @@ class TestLatencyStrategy:
 
         backend = TimingBackend(delay_per_token=0.02)
         executor = RequestExecutor()
-        dataset = InlineDataset(["p1", "p2", "p3"])
+        prompts = ["p1", "p2", "p3"]
         config = BenchmarkConfig(mode="latency", runs=3)
 
         strategy = LatencyStrategy()
-        results = await strategy.run(executor, backend, dataset, config)
+        results = await strategy.run(executor, backend, prompts, config)
 
         assert len(results) == 3
         assert all(r.success for r in results)
@@ -322,7 +317,7 @@ class TestServeStrategy:
         """Test serve strategy with arrival pattern."""
         backend = MockBackend(delay_per_token=0.01)
         executor = RequestExecutor()
-        dataset = InlineDataset(["p1", "p2", "p3", "p4", "p5"])
+        prompts = ["p1", "p2", "p3", "p4", "p5"]
         config = BenchmarkConfig(
             mode="serve",
             runs=5,
@@ -331,7 +326,7 @@ class TestServeStrategy:
         )
 
         strategy = ServeStrategy(seed=42)
-        results = await strategy.run(executor, backend, dataset, config)
+        results = await strategy.run(executor, backend, prompts, config)
 
         assert len(results) == 5
         assert all(r.success for r in results)
@@ -355,7 +350,7 @@ class TestServeStrategy:
 
         backend = TrackingBackend(delay_per_token=0.05)
         executor = RequestExecutor()
-        dataset = InlineDataset(["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"])
+        prompts = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]
         config = BenchmarkConfig(
             mode="serve",
             runs=8,
@@ -364,6 +359,6 @@ class TestServeStrategy:
         )
 
         strategy = ServeStrategy()
-        await strategy.run(executor, backend, dataset, config)
+        await strategy.run(executor, backend, prompts, config)
 
         assert max_concurrent <= 3

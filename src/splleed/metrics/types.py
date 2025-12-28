@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from rich.console import Console
+
     from splleed.environment import EnvironmentInfo
     from splleed.stats import ConfidenceInterval
 
@@ -172,3 +175,37 @@ class BenchmarkResults:
     # Multi-trial data (populated when trials > 1)
     trial_results: list[TrialResult] | None = None
     aggregated_results: list[ConcurrencyResultWithCI] | None = None
+
+    def print(self, console: Console | None = None) -> None:
+        """Print results as a Rich table."""
+        from splleed.reporters.console import print_results
+
+        print_results(self, console)
+
+    def to_json(self, indent: int = 2) -> str:
+        """Serialize results to JSON string."""
+        from splleed.reporters.json import to_json
+
+        return to_json(self, indent)
+
+    def to_csv(self) -> str:
+        """Serialize results to CSV string."""
+        from splleed.reporters.csv import to_csv
+
+        return to_csv(self)
+
+    def save(self, path: Path | str) -> None:
+        """
+        Save results to file.
+
+        Format is inferred from file extension:
+        - .json: JSON format
+        - .csv: CSV format
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if path.suffix == ".csv":
+            path.write_text(self.to_csv())
+        else:
+            path.write_text(self.to_json())
