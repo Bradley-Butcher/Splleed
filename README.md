@@ -12,7 +12,17 @@ LLM inference benchmarking harness with pluggable backends.
 ## Installation
 
 ```bash
+# Clone the repo
+git clone https://github.com/Bradley-Butcher/Splleed.git
+cd Splleed
+
+# With uv (recommended)
+uv sync
+uv run splleed --help
+
+# Or with pip
 pip install -e .
+splleed --help
 ```
 
 Inference engines (vLLM, TGI) are **not** bundled - install them separately as needed.
