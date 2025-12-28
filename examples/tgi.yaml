@@ -1,0 +1,31 @@
+# TGI benchmark configuration
+# Connect mode: connect to an existing TGI server (e.g., Docker)
+#
+# Start TGI with Docker:
+#   docker run --gpus all -p 3000:80 \
+#     ghcr.io/huggingface/text-generation-inference:latest \
+#     --model-id Qwen/Qwen2.5-0.5B-Instruct
+
+backend:
+  type: tgi
+  endpoint: http://localhost:3000
+
+dataset:
+  type: inline
+  prompts:
+    - "What is the capital of France?"
+    - "Explain quantum computing in simple terms."
+    - "Write a haiku about programming."
+
+benchmark:
+  mode: latency
+  concurrency: [1]
+  warmup: 2
+  runs: 10
+
+sampling:
+  max_tokens: 100
+  temperature: 0.0
+
+output:
+  format: json

@@ -1,0 +1,27 @@
+# vLLM benchmark configuration
+# Managed mode: splleed starts and manages the vLLM server
+
+backend:
+  type: vllm
+  model: Qwen/Qwen2.5-0.5B-Instruct
+  # endpoint: http://localhost:8000  # Use this instead for connect mode
+
+dataset:
+  type: inline
+  prompts:
+    - "What is the capital of France?"
+    - "Explain quantum computing in simple terms."
+    - "Write a haiku about programming."
+
+benchmark:
+  mode: latency
+  concurrency: [1]
+  warmup: 2
+  runs: 10
+
+sampling:
+  max_tokens: 100
+  temperature: 0.0
+
+output:
+  format: json
