@@ -19,25 +19,36 @@ def make_result(
     num_tokens: int = 10,
     error: str | None = None,
 ) -> RequestResult:
-    """Helper to create RequestResult for testing."""
-    tokens = (
-        [
-            Token(
-                text=f"t{i}", timestamp=0.1 + ttft + sum(itl[:i]) if itl else 0.1 + ttft + i * 0.05
-            )
-            for i in range(num_tokens)
-        ]
-        if success
-        else []
-    )
+    """Helper to create RequestResult for testing.
+
+    Creates tokens positioned to produce the desired ttft and itl
+    when computed by RequestResult properties.
+    """
+    start_time = 0.0
+
+    if success:
+        # If itl is provided, it determines token count
+        if itl is not None:
+            num_tokens = len(itl) + 1
+
+        # Default ITL values if not provided
+        actual_itl = itl if itl is not None else [0.05] * (num_tokens - 1)
+
+        # Build tokens to produce desired ttft and itl
+        tokens = []
+        current_time = start_time + ttft  # First token at start_time + ttft
+        for i in range(num_tokens):
+            tokens.append(Token(text=f"t{i}", timestamp=current_time))
+            if i < len(actual_itl):
+                current_time += actual_itl[i]
+    else:
+        tokens = []
 
     return RequestResult(
         success=success,
-        start_time=0.0,
+        start_time=start_time,
         end_time=total_time,
         tokens=tokens,
-        ttft=ttft if success else None,
-        itl=itl or [0.05] * (num_tokens - 1) if success else [],
         error=error,
     )
 
@@ -297,8 +308,6 @@ class TestRequestResultProperties:
             start_time=1.0,
             end_time=2.5,
             tokens=[],
-            ttft=0.1,
-            itl=[],
         )
         assert result.total_time == 1.5
 
@@ -331,3 +340,26 @@ class TestRequestResultProperties:
         """Test tokens_per_sec with no tokens."""
         result = make_result(success=False)
         assert result.tokens_per_sec is None
+
+    def test_ttft_computed(self):
+        """Test ttft is computed from token timestamps."""
+        result = make_result(ttft=0.05)
+        assert result.ttft == pytest.approx(0.05, rel=0.01)
+
+    def test_ttft_no_tokens(self):
+        """Test ttft is None when no tokens."""
+        result = make_result(success=False)
+        assert result.ttft is None
+
+    def test_itl_computed(self):
+        """Test itl is computed from token timestamps."""
+        result = make_result(itl=[0.01, 0.02, 0.03])
+        assert len(result.itl) == 3
+        assert result.itl[0] == pytest.approx(0.01, rel=0.01)
+        assert result.itl[1] == pytest.approx(0.02, rel=0.01)
+        assert result.itl[2] == pytest.approx(0.03, rel=0.01)
+
+    def test_itl_single_token(self):
+        """Test itl is empty with single token."""
+        result = make_result(num_tokens=1, itl=[])
+        assert result.itl == []

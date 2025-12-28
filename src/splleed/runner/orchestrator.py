@@ -7,6 +7,8 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
+from tqdm import tqdm
+
 from splleed.config.base import BenchmarkConfig, SamplingParams
 from splleed.environment import capture_environment, format_gpu_info
 from splleed.metrics import aggregate_results
@@ -82,8 +84,7 @@ class BenchmarkOrchestrator:
 
         logger.info(f"Running {warmup_count} warmup iterations...")
 
-        for i in range(warmup_count):
-            logger.debug(f"Warmup iteration {i + 1}/{warmup_count}")
+        for _ in tqdm(range(warmup_count), desc="Warmup", leave=False):
             await strategy.run(
                 self.executor,
                 backend,
@@ -101,7 +102,9 @@ class BenchmarkOrchestrator:
         """Run benchmark at all concurrency levels (single trial)."""
         concurrency_results: list[ConcurrencyResult] = []
 
-        for concurrency in self.benchmark.concurrency:
+        pbar = tqdm(self.benchmark.concurrency, desc="Benchmarking", leave=False)
+        for concurrency in pbar:
+            pbar.set_postfix(concurrency=concurrency)
             logger.info(f"Running benchmark at concurrency={concurrency}")
 
             # Create modified config for this concurrency level
@@ -231,8 +234,7 @@ class BenchmarkOrchestrator:
         logger.info(f"Running {n_trials} independent trials for statistical rigor")
         trial_results: list[TrialResult] = []
 
-        for trial_idx in range(n_trials):
-            logger.info(f"=== Trial {trial_idx + 1}/{n_trials} ===")
+        for trial_idx in tqdm(range(n_trials), desc="Trials"):
             await self._run_warmup(backend, strategy)
             concurrency_results = await self._run_single_benchmark(backend, strategy)
             trial_results.append(

@@ -3,7 +3,6 @@
 import asyncio
 
 from splleed import Benchmark, SamplingParams, VLLMConfig
-from splleed.reporters import print_results
 
 
 async def main():
@@ -21,14 +20,15 @@ async def main():
             "Name three programming languages.",
         ],
         mode="latency",
-        concurrency=[1, 2],
+        concurrency=[1, 2, 4, 8, 16],
         warmup=1,
         runs=5,
-        sampling=SamplingParams(max_tokens=64, temperature=0.0),
+        trials=3,
+        sampling=SamplingParams(max_tokens=1024, temperature=0.0),
     )
 
     results = await b.run()
-    print_results(results)
+    results.print()
 
 
 if __name__ == "__main__":

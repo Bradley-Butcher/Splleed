@@ -1,12 +1,13 @@
 # splleed
 
-LLM inference benchmarking harness with pluggable backends.
+LLM inference benchmarking with a Python-first API.
 
 ## Features
 
+- **Python API**: Write benchmarks as scripts, not config files
 - **Pluggable backends**: vLLM, TGI (more coming)
 - **Comprehensive metrics**: TTFT, ITL, TPOT, throughput, E2E latency
-- **Multiple modes**: throughput, latency, serve simulation
+- **Statistical rigor**: Multiple trials with confidence intervals
 - **Flexible operation**: Connect to existing servers or let splleed manage them
 
 ## Installation
@@ -15,79 +16,124 @@ LLM inference benchmarking harness with pluggable backends.
 pip install splleed
 ```
 
-Or for development:
-
+For HuggingFace dataset support:
 ```bash
-git clone https://github.com/Bradley-Butcher/Splleed.git
-cd Splleed
-uv sync  # or: pip install -e .
+pip install splleed[hf]
 ```
 
-Inference engines (vLLM, TGI) are **not** bundled - install them separately as needed.
+Inference engines (vLLM, TGI) are **not** bundled - install them separately.
 
 ## Quick Start
 
-```bash
-# Run a benchmark
-splleed run examples/vllm.yaml
+```python
+import asyncio
+from splleed import Benchmark, VLLMConfig, SamplingParams
 
-# Other commands
-splleed validate config.yaml   # Check config syntax
-splleed backends               # List available backends
-splleed init -o config.yaml    # Generate example config
+async def main():
+    results = await Benchmark(
+        backend=VLLMConfig(model="Qwen/Qwen2.5-0.5B-Instruct"),
+        prompts=[
+            "What is the capital of France?",
+            "Explain quantum computing briefly.",
+        ],
+        concurrency=[1, 2, 4],
+        trials=3,
+        sampling=SamplingParams(max_tokens=100),
+    ).run()
+
+    results.print()
+    results.save("results.json")
+
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-## Configuration
+## Connect vs Managed Mode
 
-### Connect Mode
-Connect to an already-running server:
-
-```yaml
-backend:
-  type: vllm
-  endpoint: http://localhost:8000
+**Managed mode** - splleed starts and stops the server:
+```python
+backend = VLLMConfig(model="Qwen/Qwen2.5-0.5B-Instruct")
 ```
 
-### Managed Mode
-Let splleed start and stop the server:
-
-```yaml
-backend:
-  type: vllm
-  model: Qwen/Qwen2.5-0.5B-Instruct
-  port: 8000
+**Connect mode** - use an existing server:
+```python
+backend = VLLMConfig(
+    model="Qwen/Qwen2.5-0.5B-Instruct",
+    endpoint="http://localhost:8000",
+)
 ```
 
-### Full Example
+## Using HuggingFace Datasets
 
-```yaml
-backend:
-  type: vllm
-  model: meta-llama/Llama-3.1-8B-Instruct
-  port: 8000
-  gpu_memory_utilization: 0.9
+```python
+from datasets import load_dataset
+from splleed import Benchmark, VLLMConfig
 
-dataset:
-  type: inline
-  prompts:
-    - "What is the capital of France?"
-    - "Explain quantum computing."
+async def main():
+    ds = load_dataset("tatsu-lab/alpaca", split="train")
+    ds = ds.shuffle(seed=42).select(range(100))
+    prompts = list(ds["instruction"])
 
-benchmark:
-  mode: latency        # throughput, latency, or serve
-  concurrency: [1, 4, 8]
-  warmup: 2
-  runs: 10
+    results = await Benchmark(
+        backend=VLLMConfig(model="Qwen/Qwen2.5-3B-Instruct"),
+        prompts=prompts,
+        concurrency=[1, 2, 4, 8],
+        trials=3,
+    ).run()
 
-sampling:
-  max_tokens: 100
-  temperature: 0.0
-
-output:
-  format: json
+    results.print()
 ```
 
-See `examples/` for more configurations.
+## Backend Configuration
+
+### vLLM
+
+```python
+from splleed import VLLMConfig
+
+backend = VLLMConfig(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    tensor_parallel=2,
+    gpu_memory_utilization=0.9,
+    quantization="awq",  # optional
+    dtype="auto",
+)
+```
+
+### TGI
+
+```python
+from splleed import TGIConfig
+
+backend = TGIConfig(
+    model="meta-llama/Llama-3.1-8B-Instruct",
+    quantize="bitsandbytes-nf4",  # optional
+)
+```
+
+## Benchmark Options
+
+```python
+Benchmark(
+    backend=...,
+    prompts=["..."],
+
+    # Benchmark settings
+    mode="latency",          # "latency", "throughput", or "serve"
+    concurrency=[1, 4, 8],   # concurrency levels to test
+    warmup=2,                # warmup iterations
+    runs=10,                 # requests per concurrency level
+    trials=3,                # independent trials for CI
+    confidence_level=0.95,   # confidence interval level
+
+    # Sampling parameters
+    sampling=SamplingParams(
+        max_tokens=100,
+        temperature=0.0,
+        top_p=1.0,
+    ),
+)
+```
 
 ## Metrics
 
@@ -95,27 +141,23 @@ See `examples/` for more configurations.
 |--------|-------------|
 | TTFT | Time to first token |
 | ITL | Inter-token latency |
-| TPOT | Time per output token |
-| E2E | End-to-end latency |
+| TPOT | Time per output token (mean ITL) |
+| E2E | End-to-end request latency |
 | Throughput | Tokens/sec |
+| Goodput | % of requests meeting SLO |
 
-All latency metrics include p50, p95, p99, and mean.
+All latency metrics include p50, p95, p99, and mean. With multiple trials, results include 95% confidence intervals.
 
-## Backend Setup
+## Output Formats
 
-For managed mode, splleed finds the engine executable via:
+```python
+results.print()              # Rich table to console
+results.save("out.json")     # JSON format
+results.save("out.csv")      # CSV format
 
-1. Config: `executable: /path/to/vllm`
-2. Env var: `SPLLEED_VLLM_PATH` or `SPLLEED_TGI_PATH`
-3. System PATH
-
-## Adding Backends
-
-```bash
-splleed new-backend my_engine
+json_str = results.to_json()
+csv_str = results.to_csv()
 ```
-
-See `src/splleed/backends/_template/` for the template.
 
 ## License
 

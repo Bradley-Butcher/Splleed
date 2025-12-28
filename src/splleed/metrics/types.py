@@ -31,8 +31,6 @@ class RequestResult:
 
     # Populated on success
     tokens: list[Token] = field(default_factory=list)
-    ttft: float | None = None  # Time to first token (seconds)
-    itl: list[float] = field(default_factory=list)  # Inter-token latencies (seconds)
 
     # Populated on failure
     error: str | None = None
@@ -41,6 +39,23 @@ class RequestResult:
     def total_time(self) -> float:
         """Total request time in seconds."""
         return self.end_time - self.start_time
+
+    @property
+    def ttft(self) -> float | None:
+        """Time to first token (seconds), computed from token timestamps."""
+        if not self.tokens:
+            return None
+        return self.tokens[0].timestamp - self.start_time
+
+    @property
+    def itl(self) -> list[float]:
+        """Inter-token latencies (seconds), computed from token timestamps."""
+        if len(self.tokens) < 2:
+            return []
+        return [
+            self.tokens[i].timestamp - self.tokens[i - 1].timestamp
+            for i in range(1, len(self.tokens))
+        ]
 
     @property
     def output_tokens(self) -> int:

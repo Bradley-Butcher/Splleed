@@ -16,15 +16,15 @@ logger = logging.getLogger(__name__)
 
 class RequestExecutor:
     """
-    Executes single generation requests and handles all timing.
+    Executes generation requests and collects timing data.
 
-    This is the central place where TTFT and ITL are measured.
-    Backends just yield tokens; the executor timestamps them.
+    Collects raw token timestamps. Metrics (TTFT, ITL) are computed
+    from timestamps by RequestResult properties.
     """
 
     async def execute(self, backend: Backend, request: GenerateRequest) -> RequestResult:
         """
-        Execute a generation request and collect timing metrics.
+        Execute a generation request and collect token timestamps.
 
         Args:
             backend: The inference backend to use
@@ -36,26 +36,10 @@ class RequestExecutor:
         start_time = time.perf_counter()
         tokens: list[Token] = []
         error: str | None = None
-        ttft: float | None = None
-        itl: list[float] = []
 
         try:
-            last_token_time: float | None = None
-
             async for text in backend.generate_stream(request):
-                now = time.perf_counter()
-
-                # Record TTFT on first token
-                if ttft is None:
-                    ttft = now - start_time
-
-                # Record ITL for subsequent tokens
-                if last_token_time is not None:
-                    itl.append(now - last_token_time)
-
-                tokens.append(Token(text=text, timestamp=now))
-                last_token_time = now
-
+                tokens.append(Token(text=text, timestamp=time.perf_counter()))
         except Exception as e:
             logger.exception(f"Request failed: {e}")
             error = str(e)
@@ -67,8 +51,6 @@ class RequestExecutor:
             start_time=start_time,
             end_time=end_time,
             tokens=tokens,
-            ttft=ttft,
-            itl=itl,
             error=error,
         )
 

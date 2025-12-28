@@ -23,6 +23,7 @@ dependencies = [
     "httpx>=0.25",
     "rich>=13.0",
     "numpy>=1.24,<2.3",  # numba (vLLM dep) requires <2.3
+    "tqdm>=4.0",
 ]
 
 [project.optional-dependencies]
