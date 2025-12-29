@@ -22,6 +22,7 @@ class GenerateRequest(BaseModel):
 
     prompt: str
     max_tokens: int = 128
+    min_tokens: int | None = None
     temperature: float = 0.0
     top_p: float = 1.0
     top_k: int | None = None
@@ -396,6 +397,9 @@ class OpenAIServerBackend(ManagedBackend[ConfigT]):
             "presence_penalty": request.presence_penalty,
             "stream": True,
         }
+
+        if request.min_tokens is not None:
+            payload["min_tokens"] = request.min_tokens
 
         if request.top_k is not None:
             payload["top_k"] = request.top_k

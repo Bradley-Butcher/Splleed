@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from splleed.stats import ConfidenceInterval, compute_ci
+
 if TYPE_CHECKING:
     from splleed.config.base import SLOConfig
 
-from .types import ConcurrencyResult, RequestResult
+from .types import ConcurrencyResult, ConcurrencyResultWithCI, RequestResult, TrialResult
 
 
 @dataclass
@@ -183,3 +185,69 @@ def aggregate_results(
         goodput_pct=goodput_pct,
         raw_results=results if include_raw else None,
     )
+
+
+def aggregate_trials(
+    trial_results: list[TrialResult],
+    confidence_level: float = 0.95,
+) -> list[ConcurrencyResultWithCI]:
+    """
+    Aggregate results across multiple trials into confidence intervals.
+
+    Args:
+        trial_results: Results from multiple independent trials
+        confidence_level: Confidence level for CI computation (e.g., 0.95 for 95% CI)
+
+    Returns:
+        List of aggregated results with confidence intervals for each concurrency level
+    """
+    if not trial_results:
+        return []
+
+    concurrency_levels = [cr.concurrency for cr in trial_results[0].concurrency_results]
+    aggregated: list[ConcurrencyResultWithCI] = []
+
+    for idx, concurrency in enumerate(concurrency_levels):
+        trial_data = [tr.concurrency_results[idx] for tr in trial_results]
+
+        def ci(field: str, data: list[ConcurrencyResult] = trial_data) -> ConfidenceInterval:
+            values = [getattr(td, field) for td in data]
+            return compute_ci(values, confidence_level)
+
+        # Handle goodput specially - filter None values
+        goodput_values = [td.goodput_pct for td in trial_data if td.goodput_pct is not None]
+        goodput = compute_ci(goodput_values, confidence_level) if goodput_values else None
+
+        aggregated.append(
+            ConcurrencyResultWithCI(
+                concurrency=concurrency,
+                # Counts - summed across trials
+                num_requests=sum(td.num_requests for td in trial_data),
+                num_successful=sum(td.num_successful for td in trial_data),
+                num_failed=sum(td.num_failed for td in trial_data),
+                # Throughput
+                throughput_tokens_per_sec=ci("throughput_tokens_per_sec"),
+                throughput_requests_per_sec=ci("throughput_requests_per_sec"),
+                # TTFT
+                ttft_p50_ms=ci("ttft_p50_ms"),
+                ttft_p95_ms=ci("ttft_p95_ms"),
+                ttft_p99_ms=ci("ttft_p99_ms"),
+                ttft_mean_ms=ci("ttft_mean_ms"),
+                # ITL
+                itl_p50_ms=ci("itl_p50_ms"),
+                itl_p95_ms=ci("itl_p95_ms"),
+                itl_p99_ms=ci("itl_p99_ms"),
+                itl_mean_ms=ci("itl_mean_ms"),
+                # TPOT
+                tpot_mean_ms=ci("tpot_mean_ms"),
+                # E2E Latency
+                e2el_p50_ms=ci("e2el_p50_ms"),
+                e2el_p95_ms=ci("e2el_p95_ms"),
+                e2el_p99_ms=ci("e2el_p99_ms"),
+                e2el_mean_ms=ci("e2el_mean_ms"),
+                # Goodput (special handling for None)
+                goodput_pct=goodput,
+            )
+        )
+
+    return aggregated

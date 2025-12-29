@@ -7,8 +7,10 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
+from splleed import Benchmark, SamplingParams
 from splleed.backends.base import Backend, BackendConfigBase, GenerateRequest
-from splleed.config.base import ArrivalPattern, BenchmarkConfig, SamplingParams
+from splleed.backends.vllm import VLLMConfig
+from splleed.config.base import ArrivalPattern
 from splleed.runner.executor import RequestExecutor, execute_concurrent
 from splleed.runner.strategies import (
     LatencyStrategy,
@@ -53,6 +55,26 @@ class MockBackend(Backend[MockConfig]):
     async def health(self) -> bool:
         """Always healthy."""
         return True
+
+
+def make_benchmark(
+    prompts: list[str],
+    mode: str = "throughput",
+    concurrency: list[int] | None = None,
+    arrival_rate: float | None = None,
+    arrival_pattern: str = "poisson",
+) -> Benchmark:
+    """Helper to create a Benchmark for testing strategies."""
+    return Benchmark(
+        backend=VLLMConfig(model="test-model"),
+        prompts=prompts,
+        mode=mode,  # type: ignore[arg-type]
+        concurrency=concurrency or [1],
+        warmup=0,
+        sampling=SamplingParams(max_tokens=50),
+        arrival_rate=arrival_rate,
+        arrival_pattern=arrival_pattern,  # type: ignore[arg-type]
+    )
 
 
 class TestRequestExecutor:
@@ -237,11 +259,11 @@ class TestThroughputStrategy:
         backend = MockBackend(delay_per_token=0.01)
         executor = RequestExecutor()
         prompts = ["prompt 1", "prompt 2", "prompt 3"]
-        config = BenchmarkConfig(mode="throughput", runs=3, concurrency=[2])
+        benchmark = make_benchmark(prompts, mode="throughput", concurrency=[2])
         sampling = SamplingParams(max_tokens=50)
 
         strategy = ThroughputStrategy(sampling=sampling)
-        results = await strategy.run(executor, backend, prompts, config)
+        results = await strategy.run(executor, backend, prompts, benchmark)
 
         assert len(results) > 0
         assert all(r.success for r in results)
@@ -266,10 +288,10 @@ class TestThroughputStrategy:
         backend = TrackingBackend(delay_per_token=0.02)
         executor = RequestExecutor()
         prompts = ["p1", "p2", "p3", "p4", "p5"]
-        config = BenchmarkConfig(mode="throughput", runs=5, concurrency=[1, 2, 4])
+        benchmark = make_benchmark(prompts, mode="throughput", concurrency=[1, 2, 4])
 
         strategy = ThroughputStrategy()
-        await strategy.run(executor, backend, prompts, config)
+        await strategy.run(executor, backend, prompts, benchmark)
 
         # Should use max concurrency (4)
         assert max_concurrent <= 4
@@ -294,10 +316,10 @@ class TestLatencyStrategy:
         backend = TimingBackend(delay_per_token=0.02)
         executor = RequestExecutor()
         prompts = ["p1", "p2", "p3"]
-        config = BenchmarkConfig(mode="latency", runs=3)
+        benchmark = make_benchmark(prompts, mode="latency")
 
         strategy = LatencyStrategy()
-        results = await strategy.run(executor, backend, prompts, config)
+        results = await strategy.run(executor, backend, prompts, benchmark)
 
         assert len(results) == 3
         assert all(r.success for r in results)
@@ -318,15 +340,16 @@ class TestServeStrategy:
         backend = MockBackend(delay_per_token=0.01)
         executor = RequestExecutor()
         prompts = ["p1", "p2", "p3", "p4", "p5"]
-        config = BenchmarkConfig(
+        benchmark = make_benchmark(
+            prompts,
             mode="serve",
-            runs=5,
             concurrency=[2],
-            arrival=ArrivalPattern(type="constant", rate=100.0),
+            arrival_rate=100.0,
+            arrival_pattern="constant",
         )
 
         strategy = ServeStrategy(seed=42)
-        results = await strategy.run(executor, backend, prompts, config)
+        results = await strategy.run(executor, backend, prompts, benchmark)
 
         assert len(results) == 5
         assert all(r.success for r in results)
@@ -351,14 +374,15 @@ class TestServeStrategy:
         backend = TrackingBackend(delay_per_token=0.05)
         executor = RequestExecutor()
         prompts = ["p1", "p2", "p3", "p4", "p5", "p6", "p7", "p8"]
-        config = BenchmarkConfig(
+        benchmark = make_benchmark(
+            prompts,
             mode="serve",
-            runs=8,
             concurrency=[3],
-            arrival=ArrivalPattern(type="constant", rate=1000.0),  # Fast arrivals
+            arrival_rate=1000.0,
+            arrival_pattern="constant",
         )
 
         strategy = ServeStrategy()
-        await strategy.run(executor, backend, prompts, config)
+        await strategy.run(executor, backend, prompts, benchmark)
 
         assert max_concurrent <= 3

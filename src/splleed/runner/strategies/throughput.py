@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING
 from .base import BenchmarkStrategy
 
 if TYPE_CHECKING:
+    from splleed.api import Benchmark
     from splleed.backends.base import Backend
-    from splleed.config.base import BenchmarkConfig, SamplingParams
+    from splleed.config.base import SamplingParams
     from splleed.metrics.types import RequestResult
     from splleed.runner.executor import RequestExecutor
 
@@ -29,16 +30,22 @@ class ThroughputStrategy(BenchmarkStrategy):
         executor: RequestExecutor,
         backend: Backend,
         prompts: list[str],
-        config: BenchmarkConfig,
+        config: Benchmark,
     ) -> list[RequestResult]:
         from splleed.backends.base import GenerateRequest
         from splleed.runner.executor import execute_concurrent
 
         max_tokens = self.sampling.max_tokens if self.sampling else 128
+        min_tokens = self.sampling.min_tokens if self.sampling else None
         temperature = self.sampling.temperature if self.sampling else 0.0
 
         requests = [
-            GenerateRequest(prompt=p, max_tokens=max_tokens, temperature=temperature)
+            GenerateRequest(
+                prompt=p,
+                max_tokens=max_tokens,
+                min_tokens=min_tokens,
+                temperature=temperature,
+            )
             for p in prompts
         ]
 
@@ -62,11 +69,12 @@ class LatencyStrategy(BenchmarkStrategy):
         executor: RequestExecutor,
         backend: Backend,
         prompts: list[str],
-        config: BenchmarkConfig,
+        config: Benchmark,
     ) -> list[RequestResult]:
         from splleed.backends.base import GenerateRequest
 
         max_tokens = self.sampling.max_tokens if self.sampling else 128
+        min_tokens = self.sampling.min_tokens if self.sampling else None
         temperature = self.sampling.temperature if self.sampling else 0.0
 
         results: list[RequestResult] = []
@@ -75,6 +83,7 @@ class LatencyStrategy(BenchmarkStrategy):
             request = GenerateRequest(
                 prompt=prompt,
                 max_tokens=max_tokens,
+                min_tokens=min_tokens,
                 temperature=temperature,
             )
             result = await executor.execute(backend, request)

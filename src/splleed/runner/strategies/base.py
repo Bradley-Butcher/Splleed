@@ -4,8 +4,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from splleed.api import Benchmark
     from splleed.backends.base import Backend
-    from splleed.config.base import BenchmarkConfig
     from splleed.metrics.types import RequestResult
     from splleed.runner.executor import RequestExecutor
 
@@ -27,7 +27,7 @@ class BenchmarkStrategy(ABC):
         executor: "RequestExecutor",
         backend: "Backend",
         prompts: list[str],
-        config: "BenchmarkConfig",
+        config: "Benchmark",
     ) -> list["RequestResult"]:
         """
         Execute the benchmark strategy.

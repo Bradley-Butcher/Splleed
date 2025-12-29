@@ -9,13 +9,11 @@ from typing import TYPE_CHECKING, Any
 
 from tqdm import tqdm
 
-from splleed.config.base import BenchmarkConfig, SamplingParams
 from splleed.environment import capture_environment, format_gpu_info
-from splleed.metrics import aggregate_results
+from splleed.metrics import aggregate_results, aggregate_trials
 from splleed.metrics.types import (
     BenchmarkResults,
     ConcurrencyResult,
-    ConcurrencyResultWithCI,
     TrialResult,
 )
 from splleed.runner.executor import RequestExecutor
@@ -25,10 +23,9 @@ from splleed.runner.strategies import (
     StartupStrategy,
     ThroughputStrategy,
 )
-from splleed.stats import ConfidenceInterval, compute_ci
 
 if TYPE_CHECKING:
-    from splleed.backends import BackendConfig
+    from splleed.api import Benchmark
     from splleed.backends.base import Backend
 
 logger = logging.getLogger(__name__)
@@ -47,30 +44,27 @@ class BenchmarkOrchestrator:
 
     def __init__(
         self,
-        *,
-        backend_config: BackendConfig,
+        benchmark: Benchmark,
         prompts: list[str],
-        benchmark: BenchmarkConfig,
-        sampling: SamplingParams,
+        *,
         include_raw: bool = False,
     ) -> None:
-        self.backend_config = backend_config
-        self.prompts = prompts
         self.benchmark = benchmark
-        self.sampling = sampling
+        self.prompts = prompts
         self.include_raw = include_raw
         self.executor = RequestExecutor()
 
     def _get_strategy(self):
         """Get the appropriate benchmark strategy."""
         mode = self.benchmark.mode
+        sampling = self.benchmark.sampling
 
         if mode == "throughput":
-            return ThroughputStrategy(self.sampling)
+            return ThroughputStrategy(sampling)
         elif mode == "latency":
-            return LatencyStrategy(self.sampling)
+            return LatencyStrategy(sampling)
         elif mode == "serve":
-            return ServeStrategy(self.sampling)
+            return ServeStrategy(sampling)
         elif mode == "startup":
             return StartupStrategy()
         else:
@@ -138,74 +132,18 @@ class BenchmarkOrchestrator:
 
         return concurrency_results
 
-    def _aggregate_trials(
-        self,
-        trial_results: list[TrialResult],
-        confidence_level: float,
-    ) -> list[ConcurrencyResultWithCI]:
-        """Aggregate results across trials into CIs."""
-        if not trial_results:
-            return []
-
-        concurrency_levels = [cr.concurrency for cr in trial_results[0].concurrency_results]
-        aggregated: list[ConcurrencyResultWithCI] = []
-
-        for idx, concurrency in enumerate(concurrency_levels):
-            trial_data = [tr.concurrency_results[idx] for tr in trial_results]
-
-            def ci(values: list[float]) -> ConfidenceInterval:
-                return compute_ci(values, confidence_level)
-
-            aggregated.append(
-                ConcurrencyResultWithCI(
-                    concurrency=concurrency,
-                    num_requests=sum(td.num_requests for td in trial_data),
-                    num_successful=sum(td.num_successful for td in trial_data),
-                    num_failed=sum(td.num_failed for td in trial_data),
-                    throughput_tokens_per_sec=ci(
-                        [td.throughput_tokens_per_sec for td in trial_data]
-                    ),
-                    throughput_requests_per_sec=ci(
-                        [td.throughput_requests_per_sec for td in trial_data]
-                    ),
-                    ttft_p50_ms=ci([td.ttft_p50_ms for td in trial_data]),
-                    ttft_p95_ms=ci([td.ttft_p95_ms for td in trial_data]),
-                    ttft_p99_ms=ci([td.ttft_p99_ms for td in trial_data]),
-                    ttft_mean_ms=ci([td.ttft_mean_ms for td in trial_data]),
-                    itl_p50_ms=ci([td.itl_p50_ms for td in trial_data]),
-                    itl_p95_ms=ci([td.itl_p95_ms for td in trial_data]),
-                    itl_p99_ms=ci([td.itl_p99_ms for td in trial_data]),
-                    itl_mean_ms=ci([td.itl_mean_ms for td in trial_data]),
-                    tpot_mean_ms=ci([td.tpot_mean_ms for td in trial_data]),
-                    e2el_p50_ms=ci([td.e2el_p50_ms for td in trial_data]),
-                    e2el_p95_ms=ci([td.e2el_p95_ms for td in trial_data]),
-                    e2el_p99_ms=ci([td.e2el_p99_ms for td in trial_data]),
-                    e2el_mean_ms=ci([td.e2el_mean_ms for td in trial_data]),
-                    goodput_pct=ci(
-                        [td.goodput_pct for td in trial_data if td.goodput_pct is not None]
-                    )
-                    if any(td.goodput_pct is not None for td in trial_data)
-                    else None,
-                )
-            )
-
-        return aggregated
-
     def _build_config_dict(self) -> dict[str, Any]:
         """Build config dict for results."""
-        return {
-            "backend": self.backend_config.model_dump(),
-            "benchmark": self.benchmark.model_dump(),
-            "sampling": self.sampling.model_dump(),
-        }
+        return self.benchmark.model_dump()
 
     async def run(self, backend: Backend) -> BenchmarkResults:
         """Run the full benchmark."""
+        backend_config = self.benchmark.backend
         environment = capture_environment(
-            backend_type=self.backend_config.type,
-            model_name=getattr(self.backend_config, "model", None),
-            quantization=getattr(self.backend_config, "quantization", None),
-            dtype=getattr(self.backend_config, "dtype", None),
+            backend_type=backend_config.type,
+            model_name=getattr(backend_config, "model", None),
+            quantization=getattr(backend_config, "quantization", None),
+            dtype=getattr(backend_config, "dtype", None),
         )
         logger.info(f"Environment: {environment.format_summary()}")
         logger.info(f"Benchmarking with {len(self.prompts)} prompts")
@@ -220,8 +158,8 @@ class BenchmarkOrchestrator:
             concurrency_results = await self._run_single_benchmark(backend, strategy)
 
             return BenchmarkResults(
-                engine=self.backend_config.type,
-                model=getattr(self.backend_config, "model", None) or "unknown",
+                engine=backend_config.type,
+                model=getattr(backend_config, "model", None) or "unknown",
                 timestamp=datetime.now(UTC).isoformat(),
                 gpu=self._get_gpu_info(),
                 config=self._build_config_dict(),
@@ -242,11 +180,11 @@ class BenchmarkOrchestrator:
             )
 
         logger.info("Aggregating results across trials...")
-        aggregated = self._aggregate_trials(trial_results, self.benchmark.confidence_level)
+        aggregated = aggregate_trials(trial_results, self.benchmark.confidence_level)
 
         return BenchmarkResults(
-            engine=self.backend_config.type,
-            model=getattr(self.backend_config, "model", None) or "unknown",
+            engine=backend_config.type,
+            model=getattr(backend_config, "model", None) or "unknown",
             timestamp=datetime.now(UTC).isoformat(),
             gpu=self._get_gpu_info(),
             config=self._build_config_dict(),

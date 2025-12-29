@@ -10,56 +10,10 @@ Usage:
 """
 
 import asyncio
-import random
 
-from splleed import Benchmark, SamplingParams, VLLMConfig
+from transformers import AutoTokenizer
 
-
-def generate_random_prompts(
-    num_prompts: int,
-    input_len: int = 512,
-    seed: int = 42,
-) -> list[str]:
-    """Generate random prompts of approximately input_len tokens.
-
-    Mimics vLLM's random dataset. Uses simple word repetition
-    since exact token count depends on tokenizer.
-    """
-    rng = random.Random(seed)
-    words = [
-        "the",
-        "quick",
-        "brown",
-        "fox",
-        "jumps",
-        "over",
-        "lazy",
-        "dog",
-        "hello",
-        "world",
-        "python",
-        "code",
-        "data",
-        "model",
-        "train",
-        "test",
-        "run",
-        "fast",
-        "slow",
-        "big",
-        "small",
-        "new",
-        "old",
-    ]
-
-    prompts = []
-    for _ in range(num_prompts):
-        # Approximate: 1 word ≈ 1.3 tokens on average
-        num_words = int(input_len / 1.3)
-        prompt = " ".join(rng.choices(words, k=num_words))
-        prompts.append(prompt)
-
-    return prompts
+from splleed import Benchmark, SamplingParams, VLLMConfig, synthetic_prompts
 
 
 async def main():
@@ -73,16 +27,18 @@ async def main():
 
     print(f"Model: {model}")
     print(f"Num prompts: {num_prompts}")
-    print(f"Input length: ~{input_len} tokens")
+    print(f"Input length: {input_len} tokens")
     print(f"Output length: {output_len} tokens")
     print(f"Request rate: {request_rate} req/s")
     print(f"Max concurrency: {max_concurrency}")
     print()
 
-    # Generate random prompts (like vLLM's --dataset-name random)
-    prompts = generate_random_prompts(
-        num_prompts=num_prompts,
-        input_len=input_len,
+    # Generate prompts with exact token count
+    tokenizer = AutoTokenizer.from_pretrained(model)
+    prompts = synthetic_prompts(
+        count=num_prompts,
+        target_tokens=input_len,
+        tokenizer=tokenizer.encode,
         seed=42,
     )
 
@@ -96,10 +52,7 @@ async def main():
         concurrency=[max_concurrency],
         warmup=3,
         trials=1,
-        sampling=SamplingParams(
-            max_tokens=output_len,
-            temperature=0.0,
-        ),
+        sampling=SamplingParams(max_tokens=output_len),
     ).run()
 
     results.print()

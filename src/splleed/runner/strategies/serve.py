@@ -10,8 +10,9 @@ from typing import TYPE_CHECKING
 from .base import BenchmarkStrategy
 
 if TYPE_CHECKING:
+    from splleed.api import Benchmark
     from splleed.backends.base import Backend, GenerateRequest
-    from splleed.config.base import ArrivalPattern, BenchmarkConfig, SamplingParams
+    from splleed.config.base import ArrivalPattern, SamplingParams
     from splleed.metrics.types import RequestResult
     from splleed.runner.executor import RequestExecutor
 
@@ -78,16 +79,22 @@ class ServeStrategy(BenchmarkStrategy):
         executor: RequestExecutor,
         backend: Backend,
         prompts: list[str],
-        config: BenchmarkConfig,
+        config: Benchmark,
     ) -> list[RequestResult]:
         from splleed.backends.base import GenerateRequest
         from splleed.config.base import ArrivalPattern
 
         max_tokens = self.sampling.max_tokens if self.sampling else 128
+        min_tokens = self.sampling.min_tokens if self.sampling else None
         temperature = self.sampling.temperature if self.sampling else 0.0
 
         requests = [
-            GenerateRequest(prompt=p, max_tokens=max_tokens, temperature=temperature)
+            GenerateRequest(
+                prompt=p,
+                max_tokens=max_tokens,
+                min_tokens=min_tokens,
+                temperature=temperature,
+            )
             for p in prompts
         ]
 
@@ -125,7 +132,7 @@ class StartupStrategy(BenchmarkStrategy):
         executor: RequestExecutor,
         backend: Backend,
         prompts: list[str],
-        config: BenchmarkConfig,
+        config: Benchmark,
     ) -> list[RequestResult]:
         # Startup timing is handled by the orchestrator
         return []

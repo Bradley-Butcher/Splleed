@@ -7,9 +7,9 @@ from collections.abc import AsyncGenerator
 
 import pytest
 
+from splleed import Benchmark, SamplingParams
 from splleed.backends.base import Backend, BackendConfigBase, GenerateRequest
 from splleed.backends.vllm import VLLMConfig
-from splleed.config import ArrivalPattern, BenchmarkConfig, SamplingParams
 from splleed.runner.orchestrator import BenchmarkOrchestrator
 
 
@@ -65,32 +65,32 @@ def mock_backend() -> MockBackend:
 
 
 @pytest.fixture
-def backend_config() -> VLLMConfig:
-    """Create a backend config."""
-    return VLLMConfig(model="test-model")
-
-
-@pytest.fixture
-def benchmark_config() -> BenchmarkConfig:
-    """Create a benchmark config."""
-    return BenchmarkConfig(
-        mode="latency",
-        concurrency=[1],
-        warmup=0,
-        runs=3,
-    )
-
-
-@pytest.fixture
-def sampling() -> SamplingParams:
-    """Create sampling params."""
-    return SamplingParams(max_tokens=50)
-
-
-@pytest.fixture
 def prompts() -> list[str]:
     """Create test prompts."""
     return ["Hello", "World", "Test"]
+
+
+def make_benchmark(
+    prompts: list[str],
+    mode: str = "throughput",
+    concurrency: list[int] | None = None,
+    warmup: int = 0,
+    trials: int = 1,
+    arrival_rate: float | None = None,
+    arrival_pattern: str = "poisson",
+) -> Benchmark:
+    """Helper to create a Benchmark for testing."""
+    return Benchmark(
+        backend=VLLMConfig(model="test-model"),
+        prompts=prompts,
+        mode=mode,  # type: ignore[arg-type]
+        concurrency=concurrency or [1],
+        warmup=warmup,
+        trials=trials,
+        sampling=SamplingParams(max_tokens=50),
+        arrival_rate=arrival_rate,
+        arrival_pattern=arrival_pattern,  # type: ignore[arg-type]
+    )
 
 
 class TestBenchmarkOrchestrator:
@@ -100,18 +100,11 @@ class TestBenchmarkOrchestrator:
     async def test_run_basic(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        benchmark_config: BenchmarkConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test basic orchestrator run."""
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="throughput")
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         results = await orchestrator.run(mock_backend)
 
         assert results.engine == "vllm"
@@ -123,24 +116,11 @@ class TestBenchmarkOrchestrator:
     async def test_run_multiple_concurrency(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test running at multiple concurrency levels."""
-        benchmark_config = BenchmarkConfig(
-            mode="latency",
-            concurrency=[1, 2, 4],
-            warmup=0,
-            runs=3,
-        )
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="throughput", concurrency=[1, 2, 4])
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         results = await orchestrator.run(mock_backend)
 
         assert len(results.results) == 3
@@ -152,24 +132,11 @@ class TestBenchmarkOrchestrator:
     async def test_run_with_warmup(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test that warmup runs are executed."""
-        benchmark_config = BenchmarkConfig(
-            mode="latency",
-            concurrency=[1],
-            warmup=2,
-            runs=3,
-        )
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="throughput", warmup=2)
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         await orchestrator.run(mock_backend)
 
         assert mock_backend.request_count >= 3
@@ -178,18 +145,11 @@ class TestBenchmarkOrchestrator:
     async def test_results_have_metrics(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        benchmark_config: BenchmarkConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test that results contain metrics."""
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts)
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         results = await orchestrator.run(mock_backend)
 
         r = results.results[0]
@@ -202,24 +162,11 @@ class TestBenchmarkOrchestrator:
     async def test_throughput_mode(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test throughput benchmark mode."""
-        benchmark_config = BenchmarkConfig(
-            mode="throughput",
-            concurrency=[1],
-            warmup=0,
-            runs=3,
-        )
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="throughput")
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         results = await orchestrator.run(mock_backend)
 
         assert len(results.results) > 0
@@ -228,25 +175,16 @@ class TestBenchmarkOrchestrator:
     async def test_serve_mode(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test serve benchmark mode."""
-        benchmark_config = BenchmarkConfig(
+        benchmark = make_benchmark(
+            prompts,
             mode="serve",
-            concurrency=[1],
-            warmup=0,
-            runs=2,
-            arrival=ArrivalPattern(type="constant", rate=100),
+            arrival_rate=100,
+            arrival_pattern="constant",
         )
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         results = await orchestrator.run(mock_backend)
 
         assert len(results.results) > 0
@@ -255,44 +193,25 @@ class TestBenchmarkOrchestrator:
     async def test_metadata_included(
         self,
         mock_backend: MockBackend,
-        backend_config: VLLMConfig,
-        benchmark_config: BenchmarkConfig,
-        sampling: SamplingParams,
         prompts: list[str],
     ):
         """Test that metadata is included in results."""
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts)
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         results = await orchestrator.run(mock_backend)
 
         assert results.timestamp is not None
         assert results.config is not None
-        assert "backend" in results.config
 
 
 class TestStrategySelection:
     """Tests for strategy selection."""
 
     @pytest.mark.asyncio
-    async def test_latency_strategy(
-        self,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
-        prompts: list[str],
-    ):
+    async def test_latency_strategy(self, prompts: list[str]):
         """Test that latency mode uses LatencyStrategy."""
-        benchmark_config = BenchmarkConfig(mode="latency", concurrency=[1])
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="latency")
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         strategy = orchestrator._get_strategy()
 
         from splleed.runner.strategies import LatencyStrategy
@@ -300,21 +219,10 @@ class TestStrategySelection:
         assert isinstance(strategy, LatencyStrategy)
 
     @pytest.mark.asyncio
-    async def test_throughput_strategy(
-        self,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
-        prompts: list[str],
-    ):
+    async def test_throughput_strategy(self, prompts: list[str]):
         """Test that throughput mode uses ThroughputStrategy."""
-        benchmark_config = BenchmarkConfig(mode="throughput", concurrency=[1])
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="throughput")
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         strategy = orchestrator._get_strategy()
 
         from splleed.runner.strategies import ThroughputStrategy
@@ -322,44 +230,23 @@ class TestStrategySelection:
         assert isinstance(strategy, ThroughputStrategy)
 
     @pytest.mark.asyncio
-    async def test_serve_strategy(
-        self,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
-        prompts: list[str],
-    ):
+    async def test_serve_strategy(self, prompts: list[str]):
         """Test that serve mode uses ServeStrategy."""
-        benchmark_config = BenchmarkConfig(mode="serve", concurrency=[1])
-
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        benchmark = make_benchmark(prompts, mode="serve")
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
         strategy = orchestrator._get_strategy()
 
         from splleed.runner.strategies import ServeStrategy
 
         assert isinstance(strategy, ServeStrategy)
 
-    def test_invalid_mode_raises(
-        self,
-        backend_config: VLLMConfig,
-        sampling: SamplingParams,
-        prompts: list[str],
-    ):
+    def test_invalid_mode_raises(self, prompts: list[str]):
         """Test that invalid mode raises error."""
-        benchmark_config = BenchmarkConfig(mode="latency", concurrency=[1])
+        benchmark = make_benchmark(prompts)
         # Bypass Pydantic validation
-        object.__setattr__(benchmark_config, "mode", "invalid")
+        object.__setattr__(benchmark, "mode", "invalid")
 
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=backend_config,
-            prompts=prompts,
-            benchmark=benchmark_config,
-            sampling=sampling,
-        )
+        orchestrator = BenchmarkOrchestrator(benchmark, prompts)
 
         with pytest.raises(ValueError, match="Unknown benchmark mode"):
             orchestrator._get_strategy()

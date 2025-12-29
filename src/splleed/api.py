@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Literal
 from pydantic import BaseModel, Field, model_validator
 
 from splleed.backends import BackendConfig, get_backend
-from splleed.config.base import ArrivalPattern, BenchmarkConfig, SamplingParams
+from splleed.config.base import ArrivalPattern, SamplingParams, SLOConfig
 from splleed.loaders import load_hf_dataset
 from splleed.metrics.types import BenchmarkResults
 from splleed.runner.orchestrator import BenchmarkOrchestrator
@@ -45,7 +46,7 @@ class Benchmark(BaseModel):
     num_samples: Annotated[int | None, Field(gt=0)] = None
 
     # Benchmark settings
-    mode: Literal["latency", "throughput", "serve"] = "latency"
+    mode: Literal["latency", "throughput", "serve"] = "throughput"
     concurrency: Annotated[list[int], Field(min_length=1)] = [1]
     warmup: Annotated[int, Field(ge=0)] = 2
     runs: Annotated[int, Field(ge=1)] = 10
@@ -59,6 +60,9 @@ class Benchmark(BaseModel):
     # Sampling
     sampling: SamplingParams = Field(default_factory=SamplingParams)
 
+    # SLO thresholds
+    slo: SLOConfig | None = None
+
     # Output
     output_file: Path | None = None
 
@@ -69,6 +73,19 @@ class Benchmark(BaseModel):
             raise ValueError("Either 'prompts' or 'dataset' must be provided")
         if self.prompts is not None and self.dataset is not None:
             raise ValueError("Cannot specify both 'prompts' and 'dataset'")
+        return self
+
+    @model_validator(mode="after")
+    def validate_latency_mode(self) -> Benchmark:
+        """Warn if latency mode is used with concurrency > 1."""
+        if self.mode == "latency" and (len(self.concurrency) > 1 or max(self.concurrency) > 1):
+            warnings.warn(
+                "mode='latency' runs requests sequentially and ignores the concurrency "
+                "parameter. Use mode='throughput' or mode='serve' to test different "
+                "concurrency levels.",
+                UserWarning,
+                stacklevel=2,
+            )
         return self
 
     async def run(
@@ -115,24 +132,14 @@ class Benchmark(BaseModel):
             num_samples=self.num_samples,
         )
 
-    def _build_benchmark_config(self) -> BenchmarkConfig:
-        """Build the benchmark config."""
-        config = BenchmarkConfig(
-            mode=self.mode,
-            concurrency=self.concurrency,
-            warmup=self.warmup,
-            runs=self.runs,
-            trials=self.trials,
-            confidence_level=self.confidence_level,
-        )
-
-        if self.mode == "serve" and self.arrival_rate is not None:
-            config.arrival = ArrivalPattern(
-                type=self.arrival_pattern,
-                rate=self.arrival_rate,
-            )
-
-        return config
+    @property
+    def arrival(self) -> ArrivalPattern | None:
+        """Build ArrivalPattern from flat fields for serve mode."""
+        if self.mode != "serve":
+            return None
+        if self.arrival_rate is not None:
+            return ArrivalPattern(type=self.arrival_pattern, rate=self.arrival_rate)
+        return ArrivalPattern(type=self.arrival_pattern)
 
     @asynccontextmanager
     async def _backend_session(
@@ -158,11 +165,5 @@ class Benchmark(BaseModel):
 
     async def _execute(self, backend: Backend, prompts: list[str]) -> BenchmarkResults:
         """Run the benchmark orchestrator."""
-        orchestrator = BenchmarkOrchestrator(
-            backend_config=self.backend,
-            prompts=prompts,
-            benchmark=self._build_benchmark_config(),
-            sampling=self.sampling,
-            include_raw=False,
-        )
+        orchestrator = BenchmarkOrchestrator(self, prompts)
         return await orchestrator.run(backend)

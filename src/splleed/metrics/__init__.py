@@ -1,6 +1,6 @@
 """Metrics collection and aggregation."""
 
-from .aggregator import LatencyStats, aggregate_results, compute_goodput
+from .aggregator import LatencyStats, aggregate_results, aggregate_trials, compute_goodput
 from .types import (
     BenchmarkResults,
     ConcurrencyResult,
@@ -12,6 +12,7 @@ from .types import (
 
 __all__ = [
     "aggregate_results",
+    "aggregate_trials",
     "BenchmarkResults",
     "compute_goodput",
     "ConcurrencyResult",
